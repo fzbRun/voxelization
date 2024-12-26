@@ -1,0 +1,96 @@
+#version 450
+
+//--------------------------------------------------const----------------------------------------------------------
+const float depthDigit = 65536.0f;
+//逆时针
+const vec3 viewPos_offset[8] = vec3[8](vec3(0.0f), vec3(1.0f, 0.0f, 0.0f), vec3(1.0f, 1.0f, 0.0f), vec3(0.0f, 1.0f, 0.0f),
+											  vec3(0.0f, 0.0f, 1.0f), vec3(1.0f, 0.0f, 1.0f), vec3(1.0f, 1.0f, 1.0f), vec3(0.0f, 1.0f, 1.0f));
+
+//---------------------------------------------------layout-------------------------------------------------------
+
+layout(set = 0, binding = 0) uniform cameraUniformBufferObject {
+	mat4 model;
+	mat4 view;
+	mat4 proj;
+	vec4 cameraPos;
+	vec4 randomNumber;	//xyz是随机数，而w是帧数
+	vec4 swapChainExtent;
+}cubo;
+
+layout(set = 1, binding = 0) uniform voxelBufferObject{
+	mat4 model;
+	mat4 VP[3];
+	vec4 voxelSize_Num;
+	vec4 voxelStartPos;
+}vbo;
+
+layout(set = 2, binding = 0, r32ui) uniform uimage2D depthMap;
+layout(set = 2, binding = 1, r32ui) uniform uimage3D voxelMap;
+layout(set = 2, binding = 2, rgba8) uniform image2D finalMap;
+
+layout (local_size_x = 8, local_size_y = 8, local_size_z = 8) in;
+
+//-----------------------------------------------------function------------------------------------------------------
+
+ivec3 getVoxelIndex(ivec2 texCoord){
+	
+	float depth = float(imageLoad(depthMap, texCoord).r) / depthDigit;
+	depth = depth * 2.0f - 1.0f;
+
+	vec4 clipPos = vec4(texCoord * 2.0f - 1.0f, depth, 1.0f);
+	vec4 worldPos = inverse(cubo.proj * cubo.view) * clipPos;
+	worldPos /= worldPos.w;
+	
+	ivec3 voxelIndex = ivec3((worldPos.xyz - vbo.voxelStartPos.xyz) / vbo.voxelSize_Num.x);
+	return voxelIndex;
+
+}
+
+vec4 convRGBA8ToVec4( uint val) {
+	return vec4(float((val&0x000000FF)), float((val&0x0000FF00) >> 8U), float((val&0x00FF0000) >> 16U), float((val&0xFF000000) >> 24U));
+}
+
+void imageAtomicDepthTest(vec4 viewPos){
+	
+	vec4 clipPos= cubo.proj * viewPos
+	vec2 texCoord = ndcPos.xy * 0.5f + 0.5f;
+	float depth = ndcPos.z;
+
+	uint udepth = uint(depth * depthDigit);
+	uint prevStoredVal = uint(depthDigit);
+	uint curStoredVal = imageAtomicCompSwap(depthMap, texCoords, prevStoredVal, udepth);
+
+	while(curStoredVal != prevStoredVal && udepth < curStoredVal){
+		prevStoredVal = curStoredVal;
+		curStoredVal = imageAtomicCompSwap(depthMap, texCoords, prevStoredVal, udepth);
+	}
+
+}
+
+//----------------------------------------------------------main---------------------------------------------------------------
+
+void main(){
+
+	ivec3 voxelIndex = gl_GlobalInvocationID;
+	
+	uint voxelValueU = imageLoad(voxelMap, voxelIndex).r;
+	vec4 voxelValue = convRGBA8ToVec4(voxelValueU);
+	if(voxelValue.w == 0){
+		return;
+	}
+
+	vec3 worldPos = vbo.voxelStartPos + voxelIndex * vbo.voxelSize_Num.x;	//体素左下角顶点
+	vec4 viewPos = cubo.view * cubo.model * vec4(worldPos, 1.0f)
+
+	for(int i = 0; i < 8; i++){
+	
+		vec4 clipPos = cubo.proj * (viewPos_offset[i] + viewPos);
+		vec4 ndcPos = clipPos / clipPos.w;
+		vec4 screenPos= ndcPos * 0.5f + 0.5f;
+
+		ivec2 texCoords = ivec2(screenPos.xy * vbo.swapChainExtent.xy);
+		imageStore(finalMap, texCoords, vec4(voxelValue.xyz, 1.0f));
+		
+	}
+
+}
