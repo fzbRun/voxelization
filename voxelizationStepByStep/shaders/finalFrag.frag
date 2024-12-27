@@ -68,14 +68,3 @@ void main(){
 	FragColor = vec4(unpackUnorm4x8(voxelValue).rgb, 1.0f);
 
 }
-
-/*
-layout(location = 0) out vec4 fragColor;
-
-void mian(){
-	
-	ivec3 voxelIndex = ivec3((worldPos.xyz - vbo.voxelStartPos.xyz) / vbo.voxelSize_Num.x);
-	fragColor = 
-
-}
-*/

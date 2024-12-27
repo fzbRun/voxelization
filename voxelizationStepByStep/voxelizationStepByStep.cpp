@@ -38,6 +38,8 @@ const bool enableValidationLayers = false;
 const bool enableValidationLayers = true;
 #endif
 
+#define Voxelization_Block
+
 VkResult CreateDebugUtilsMessengerEXT(VkInstance instance, const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo,
 	const VkAllocationCallbacks* pAllocator, VkDebugUtilsMessengerEXT* pDebygMessenger) {
 	//由于是扩展函数，所以需要通过vkGetInstanceProcAddr获得该函数指针
@@ -117,11 +119,15 @@ private:
 	std::unique_ptr<myModel> my_model;
 	std::vector<Vertex> vertices;
 	std::vector<uint32_t> indices;
+#ifdef Voxelization_Block
+	std::vector<Vertex> vertices_cubes;
+	std::vector<uint32_t> indices_cubes;
+#endif
 
 	std::unique_ptr<myScene> my_scene;
 
 	std::unique_ptr<myImage> voxelMap;
-	const uint32_t voxelNum = 128;
+	const uint32_t voxelNum = 64;
 	std::unique_ptr<myImage> depthMap;
 
 	std::unique_ptr<myBuffer> my_buffer;
@@ -354,6 +360,73 @@ private:
 
 		my_scene = std::make_unique<myScene>(&my_model->meshs);
 
+#ifdef Voxelization_Block
+
+		glm::vec3 voxelStartPos = glm::vec3(my_scene->bvhArray[0].AABB.leftX, my_scene->bvhArray[0].AABB.leftY, my_scene->bvhArray[0].AABB.leftZ);
+		glm::vec3 cubeVertexOffset[8] = { glm::vec3(0.0f), glm::vec3(1.0f, 0.0f, 0.0f), glm::vec3(1.0f, 1.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f),
+										  glm::vec3(0.0f, 0.0f, 1.0f), glm::vec3(1.0f, 0.0f, 1.0f), glm::vec3(1.0f, 1.0f, 1.0f), glm::vec3(0.0f, 1.0f, 1.0f) };
+		glm::uint32_t cubeIndices[36] = {
+			1, 0, 3, 1, 3, 2,
+			4, 5, 6, 4, 6, 7,
+			5, 1, 2, 5, 2, 6,
+			0, 4, 7, 0, 7, 3,
+			7, 6, 2, 7, 2, 3,
+			0, 1, 5, 0, 5, 4
+		};
+
+
+		float distanceX = my_scene->bvhArray[0].AABB.rightX - my_scene->bvhArray[0].AABB.leftX;
+		float distanceY = my_scene->bvhArray[0].AABB.rightY - my_scene->bvhArray[0].AABB.leftY;
+		float distanceZ = my_scene->bvhArray[0].AABB.rightZ - my_scene->bvhArray[0].AABB.leftZ;
+		glm::vec3 distanceXYZ = glm::vec3(distanceX, distanceY, distanceZ);
+		float maxDistance = std::max(distanceX, std::max(distanceY, distanceZ));
+		float voxelSize = maxDistance / voxelNum;
+
+		for (int z = 0; z < voxelNum; z++) {
+			for (int y = 0; y < voxelNum; y++) {
+				for (int x = 0; x < voxelNum; x++) {
+					
+					for (int i = 0; i < 8; i++) {
+						Vertex vertex = Vertex(voxelStartPos + glm::vec3(x, y, z) * voxelSize + voxelSize * cubeVertexOffset[i]);
+						this->vertices_cubes.push_back(vertex);
+					}
+
+					uint32_t voxelIndex = (z * voxelNum * voxelNum + y * voxelNum + x) * 8;
+					for (int i = 0; i < 36; i++) {
+						uint32_t index = voxelIndex + cubeIndices[i];
+						this->indices_cubes.push_back(index);
+					}
+
+				}
+			}
+		}
+
+		std::unordered_map<Vertex, uint32_t> uniqueVerticesMap{};
+		std::vector<Vertex> uniqueVertices;
+		std::vector<uint32_t> uniqueIndices;
+		for (uint32_t j = 0; j < this->indices_cubes.size(); j++) {
+			Vertex vertex = this->vertices_cubes[indices_cubes[j]];
+			if (uniqueVerticesMap.count(vertex) == 0) {
+				uniqueVerticesMap[vertex] = static_cast<uint32_t>(uniqueVertices.size());
+				uniqueVertices.push_back(vertex);
+			}
+			uniqueIndices.push_back(uniqueVerticesMap[vertex]);
+		}
+		this->vertices_cubes = uniqueVertices;
+		this->indices_cubes = uniqueIndices;
+
+		//this->vertices_cubes.resize(8);
+		//this->indices_cubes.resize(36);
+		//for (int i = 0; i < 8; i++) {
+		//	this->vertices_cubes.push_back(Vertex(voxelStartPos + cubeVertexOffset[i] * distanceXYZ));
+		//}
+		//for (int i = 0; i < 36; i++) {
+		//	this->indices_cubes.push_back(cubeIndices[i]);
+		//}
+
+
+#endif
+
 	}
 
 	void createTextureResources() {
@@ -363,13 +436,13 @@ private:
 			1, VK_SAMPLE_COUNT_1_BIT, VK_FORMAT_R32_UINT, VK_IMAGE_TILING_OPTIMAL,
 			VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT,
 			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VK_IMAGE_ASPECT_COLOR_BIT);
-		voxelMap->transitionImageLayout(my_device->computeQueue, my_buffer->commandPool, voxelMap->image, VK_FORMAT_R32_UINT, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL, 1);
+		//voxelMap->transitionImageLayout(my_device->computeQueue, my_buffer->commandPool, voxelMap->image, VK_FORMAT_R32_UINT, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL, 1);
 
 		depthMap = std::make_unique<myImage>(my_device->physicalDevice, my_device->logicalDevice, my_swapChain->swapChainExtent.width, my_swapChain->swapChainExtent.height,
 			1, VK_SAMPLE_COUNT_1_BIT, VK_FORMAT_R32_UINT, VK_IMAGE_TILING_OPTIMAL,
 			VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT,
 			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VK_IMAGE_ASPECT_COLOR_BIT);
-		depthMap->transitionImageLayout(my_device->computeQueue, my_buffer->commandPool, depthMap->image, VK_FORMAT_R32_UINT, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL, 1);
+		//depthMap->transitionImageLayout(my_device->computeQueue, my_buffer->commandPool, depthMap->image, VK_FORMAT_R32_UINT, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL, 1);
 
 	}
 
@@ -378,6 +451,11 @@ private:
 
 		my_buffer->createStaticBuffer(my_device->physicalDevice, my_device->logicalDevice, my_device->graphicsQueue, sizeof(Vertex) * this->vertices.size(), &this->vertices);
 		my_buffer->createStaticBuffer(my_device->physicalDevice, my_device->logicalDevice, my_device->graphicsQueue, sizeof(uint32_t) * this->indices.size(), &this->indices);
+
+#ifdef Voxelization_Block
+		my_buffer->createStaticBuffer(my_device->physicalDevice, my_device->logicalDevice, my_device->graphicsQueue, sizeof(Vertex) * this->vertices_cubes.size(), &this->vertices_cubes);
+		my_buffer->createStaticBuffer(my_device->physicalDevice, my_device->logicalDevice, my_device->graphicsQueue, sizeof(uint32_t) * this->indices_cubes.size(), &this->indices_cubes);
+#endif
 
 		//相机MVP
 		my_buffer->createUniformBuffers(my_device->physicalDevice, my_device->logicalDevice, MAX_FRAMES_IN_FLIGHT, sizeof(UniformBufferObject), false);
@@ -427,20 +505,55 @@ private:
 		colorAttachmentResolve.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 		colorAttachmentResolve.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
 
-		std::array< VkAttachmentDescription, 1> attachements = { colorAttachmentResolve };
-
 		VkAttachmentReference colorAttachmentResolveRef{};
 		colorAttachmentResolveRef.attachment = 0;
 		colorAttachmentResolveRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
-		VkSubpassDescription voxel_subpass{};
-		voxel_subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+		/*
+#ifdef Voxelization_Block
+
+		VkAttachmentDescription depthAttachment{};
+		depthAttachment.format = VK_FORMAT_R32_UINT;
+		depthAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
+		depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+		depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+		depthAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+		depthAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+		depthAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+		depthAttachment.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
+		std::array< VkAttachmentDescription, 2> attachements = { colorAttachmentResolve,  depthAttachment };
+
+		VkAttachmentReference depthAttachmentRef{};
+		depthAttachmentRef.attachment = 1;
+		depthAttachmentRef.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
+		VkSubpassDescription final_subpass{};
+		final_subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+		final_subpass.colorAttachmentCount = 1;
+		final_subpass.pColorAttachments = &colorAttachmentResolveRef;
+		final_subpass.pDepthStencilAttachment = &depthAttachmentRef;
+
+#else
+		std::array< VkAttachmentDescription, 1> attachements = { colorAttachmentResolve };
 
 		VkSubpassDescription final_subpass{};
 		final_subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
 		final_subpass.colorAttachmentCount = 1;
 		final_subpass.pColorAttachments = &colorAttachmentResolveRef;
 
+#endif
+*/
+		std::array< VkAttachmentDescription, 1> attachements = { colorAttachmentResolve };
+
+		VkSubpassDescription final_subpass{};
+		final_subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+		final_subpass.colorAttachmentCount = 1;
+		final_subpass.pColorAttachments = &colorAttachmentResolveRef;
+
+		VkSubpassDescription voxel_subpass{};
+		voxel_subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+		
 		std::array< VkSubpassDescription, 2 > subpasses = { voxel_subpass, final_subpass };
 
 		VkSubpassDependency dependency{};
@@ -470,6 +583,13 @@ private:
 	void createFramebuffers() {
 		std::vector<VkImageView> imageViews;
 		my_buffer->createFramebuffers(my_swapChain->swapChainImageViews.size(), my_swapChain->swapChainImageViews, my_swapChain->extent, imageViews, nullptr, renderPass, my_device->logicalDevice);
+		/*
+#ifdef Voxelization_Block
+		my_buffer->createFramebuffers(my_swapChain->swapChainImageViews.size(), my_swapChain->swapChainImageViews, my_swapChain->extent, imageViews, depthMap->imageView, renderPass, my_device->logicalDevice);
+#else
+		my_buffer->createFramebuffers(my_swapChain->swapChainImageViews.size(), my_swapChain->swapChainImageViews, my_swapChain->extent, imageViews, nullptr, renderPass, my_device->logicalDevice);
+#endif
+		*/
 	}
 
 	void createMyDescriptor() {
@@ -565,6 +685,16 @@ private:
 		//------------------------------------------present---------------------------------------
 
 		VkDescriptorSetLayout presentTextureDescriptorSetLayout;
+		/*
+#ifdef Voxelization_Block
+		std::array<VkDescriptorSetLayoutBinding, 1> present_layoutBindings{};
+		present_layoutBindings[0].binding = 0;
+		present_layoutBindings[0].descriptorCount = 1;
+		present_layoutBindings[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+		present_layoutBindings[0].pImmutableSamplers = nullptr;
+		present_layoutBindings[0].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
+#else
 		std::array<VkDescriptorSetLayoutBinding, 2> present_layoutBindings{};
 		present_layoutBindings[0].binding = 0;
 		present_layoutBindings[0].descriptorCount = 1;
@@ -577,7 +707,21 @@ private:
 		present_layoutBindings[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
 		present_layoutBindings[1].pImmutableSamplers = nullptr;
 		present_layoutBindings[1].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+#endif
+		*/
+		std::array<VkDescriptorSetLayoutBinding, 2> present_layoutBindings{};
+		present_layoutBindings[0].binding = 0;
+		present_layoutBindings[0].descriptorCount = 1;
+		present_layoutBindings[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+		present_layoutBindings[0].pImmutableSamplers = nullptr;
+		present_layoutBindings[0].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
 
+		present_layoutBindings[1].binding = 1;
+		present_layoutBindings[1].descriptorCount = 1;
+		present_layoutBindings[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+		present_layoutBindings[1].pImmutableSamplers = nullptr;
+		present_layoutBindings[1].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+		
 		VkDescriptorSetLayoutCreateInfo present_layoutInfo{};
 		present_layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
 		present_layoutInfo.bindingCount = present_layoutBindings.size();
@@ -597,6 +741,47 @@ private:
 			throw std::runtime_error("failed to allocate descriptor sets!");
 		}
 
+		/*
+#ifdef Voxelization_Block
+		std::array<VkWriteDescriptorSet, 1> present_descriptorWrites{};
+		VkDescriptorImageInfo present_depthMapInfo{};
+		present_depthMapInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+		present_depthMapInfo.imageView = voxelMap->imageView;
+		present_depthMapInfo.sampler = voxelMap->textureSampler;
+		present_descriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		present_descriptorWrites[0].dstSet = present_descriptorSet;
+		present_descriptorWrites[0].dstBinding = 0;
+		present_descriptorWrites[0].dstArrayElement = 0;
+		present_descriptorWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+		present_descriptorWrites[0].descriptorCount = 1;
+		present_descriptorWrites[0].pImageInfo = &present_depthMapInfo;
+#else
+		std::array<VkWriteDescriptorSet, 2> present_descriptorWrites{};
+		VkDescriptorImageInfo present_depthMapInfo{};
+		present_depthMapInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+		present_depthMapInfo.imageView = depthMap->imageView;
+		present_depthMapInfo.sampler = depthMap->textureSampler;
+		present_descriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		present_descriptorWrites[0].dstSet = present_descriptorSet;
+		present_descriptorWrites[0].dstBinding = 0;
+		present_descriptorWrites[0].dstArrayElement = 0;
+		present_descriptorWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+		present_descriptorWrites[0].descriptorCount = 1;
+		present_descriptorWrites[0].pImageInfo = &present_depthMapInfo;
+
+		VkDescriptorImageInfo present_voxelMapInfo{};
+		present_voxelMapInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+		present_voxelMapInfo.imageView = voxelMap->imageView;
+		present_voxelMapInfo.sampler = voxelMap->textureSampler;
+		present_descriptorWrites[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		present_descriptorWrites[1].dstSet = present_descriptorSet;
+		present_descriptorWrites[1].dstBinding = 1;
+		present_descriptorWrites[1].dstArrayElement = 0;
+		present_descriptorWrites[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+		present_descriptorWrites[1].descriptorCount = 1;
+		present_descriptorWrites[1].pImageInfo = &present_voxelMapInfo;
+#endif
+		*/
 		std::array<VkWriteDescriptorSet, 2> present_descriptorWrites{};
 		VkDescriptorImageInfo present_depthMapInfo{};
 		present_depthMapInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
@@ -801,9 +986,13 @@ private:
 		vkDestroyShaderModule(my_device->logicalDevice, voxelFragShaderModule, nullptr);
 
 		//final图形管线
+#ifdef Voxelization_Block
+		auto finalVertShaderCode = readFile("C:/Users/fangzanbo/Desktop/渲染/GPU/新功能/voxelizationStepByStep/voxelizationStepByStep/shaders/finalVert_Block.spv");
+		auto finalFragShaderCode = readFile("C:/Users/fangzanbo/Desktop/渲染/GPU/新功能/voxelizationStepByStep/voxelizationStepByStep/shaders/finalFrag_Block.spv");
+#else
 		auto finalVertShaderCode = readFile("C:/Users/fangzanbo/Desktop/渲染/GPU/新功能/voxelizationStepByStep/voxelizationStepByStep/shaders/finalVert.spv");
 		auto finalFragShaderCode = readFile("C:/Users/fangzanbo/Desktop/渲染/GPU/新功能/voxelizationStepByStep/voxelizationStepByStep/shaders/finalFrag.spv");
-
+#endif
 		VkShaderModule finalVertShaderModule = createShaderModule(finalVertShaderCode);
 		VkShaderModule finalFragShaderModule = createShaderModule(finalFragShaderCode);
 
@@ -821,11 +1010,9 @@ private:
 
 		VkPipelineShaderStageCreateInfo final_shaderStages[] = { vertShaderStageInfo, fragShaderStageInfo };
 
-		vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-		vertexInputInfo.vertexAttributeDescriptionCount = 0;
-		vertexInputInfo.pVertexAttributeDescriptions = nullptr;
-		vertexInputInfo.vertexBindingDescriptionCount = 0;
-		vertexInputInfo.pVertexBindingDescriptions = nullptr;
+		inputAssembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+		inputAssembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP;
+		inputAssembly.primitiveRestartEnable = VK_FALSE;
 
 		colorBlendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
 		colorBlendAttachment.blendEnable = VK_FALSE;
@@ -838,6 +1025,13 @@ private:
 		colorBlending.pAttachments = &colorBlendAttachment;
 
 		depthStencil.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+		/*
+#ifdef Voxelization_Block
+		depthStencil.depthTestEnable = VK_TRUE;
+#else
+		depthStencil.depthTestEnable = VK_FALSE;
+#endif
+*/
 		depthStencil.depthTestEnable = VK_FALSE;
 		depthStencil.depthWriteEnable = VK_FALSE;
 		depthStencil.depthCompareOp = VK_COMPARE_OP_LESS;
@@ -848,7 +1042,7 @@ private:
 		depthStencil.front = {}; // Optional
 		depthStencil.back = {}; // Optional
 
-		rasterizer.cullMode = VK_CULL_MODE_NONE;
+		rasterizer.cullMode = VK_CULL_MODE_BACK_BIT;
 		rasterizer.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;	//顶点序列是逆时针的是正面
 		rasterizer.pNext = nullptr;
 
@@ -1155,7 +1349,11 @@ private:
 
 		std::array<VkClearValue, 2> clearValues{};
 		clearValues[0].color = { {0.0f, 0.0f, 0.0f, 1.0f} };
-		clearValues[1].depthStencil = { 1.0f, 0 };
+		/*
+#ifdef Voxelization_Block
+		clearValues[1].depthStencil = { 65536, 0 };
+#endif
+*/
 		renderPassInfo.clearValueCount = static_cast<uint32_t>(clearValues.size());
 		renderPassInfo.pClearValues = clearValues.data();
 
@@ -1210,7 +1408,15 @@ private:
 		vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, finalGraphicsPipelineLayout, 0, 1, &my_descriptor->descriptorObjects[0].descriptorSets[0], 0, nullptr);
 		vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, finalGraphicsPipelineLayout, 1, 1, &my_descriptor->descriptorObjects[1].descriptorSets[0], 0, nullptr);
 		vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, finalGraphicsPipelineLayout, 2, 1, &my_descriptor->descriptorObjects[3].descriptorSets[0], 0, nullptr);
+#ifdef Voxelization_Block
+		VkBuffer vertex_cubesBuffers[] = { my_buffer->buffersStatic[2] };
+		VkDeviceSize offsets_cubes[] = { 0 };
+		vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertex_cubesBuffers, offsets_cubes);
+		vkCmdBindIndexBuffer(commandBuffer, my_buffer->buffersStatic[3], 0, VK_INDEX_TYPE_UINT32);
+		vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(this->indices_cubes.size()), 1, 0, 0, 0);
+#else
 		vkCmdDraw(commandBuffer, 3, 1, 0, 0);
+#endif
 
 		vkCmdEndRenderPass(commandBuffer);
 
@@ -1222,6 +1428,7 @@ private:
 
 	void clearTexture(VkCommandBuffer commandBuffer) {
 
+//#ifndef Voxelization_Block
 		VkImageMemoryBarrier depth_barrier{};
 		depth_barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
 		depth_barrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
@@ -1287,6 +1494,7 @@ private:
 			0, nullptr,
 			1, &depth_barrier
 		);
+//#endif
 
 		//-----------------------------------------------------------------------
 
@@ -1322,13 +1530,13 @@ private:
 		voxel_clearColor.uint32[1] = 0;
 		voxel_clearColor.uint32[2] = 0;
 		voxel_clearColor.uint32[3] = 0;
-		subresourceRange = {};
-		subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-		subresourceRange.baseMipLevel = 0;
-		subresourceRange.levelCount = 1;
-		subresourceRange.baseArrayLayer = 0;
-		subresourceRange.layerCount = 1;
-		vkCmdClearColorImage(commandBuffer, voxelMap->image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &voxel_clearColor, 1, &subresourceRange);
+		VkImageSubresourceRange voxel_subresourceRange = {};
+		voxel_subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		voxel_subresourceRange.baseMipLevel = 0;
+		voxel_subresourceRange.levelCount = 1;
+		voxel_subresourceRange.baseArrayLayer = 0;
+		voxel_subresourceRange.layerCount = 1;
+		vkCmdClearColorImage(commandBuffer, voxelMap->image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &voxel_clearColor, 1, &voxel_subresourceRange);
 
 		voxel_barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
 		voxel_barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;

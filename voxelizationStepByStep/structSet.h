@@ -40,6 +40,15 @@ struct Vertex {
 	glm::vec3 normal;
 	glm::vec3 tangent;
 
+	Vertex() {};
+
+	Vertex(glm::vec3 pos) {
+		this->pos = pos;
+		this->texCoord = glm::vec2(0.0f);
+		this->normal = glm::vec3(0.0f);
+		this->tangent = glm::vec3(0.0f);
+	}
+
 
 	static VkVertexInputBindingDescription getBindingDescription() {
 
