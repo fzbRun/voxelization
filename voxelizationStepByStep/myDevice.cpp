@@ -75,6 +75,7 @@ void myDevice::createLogicalDevice(bool enableValidationLayers, std::vector<cons
 	//deviceFeatures.sampleRateShading = VK_TRUE;
 	deviceFeatures.geometryShader = VK_TRUE;
 	deviceFeatures.fragmentStoresAndAtomics = VK_TRUE;
+	deviceFeatures.multiViewport = VK_TRUE;
 
 	VkDeviceCreateInfo createInfo{};
 	createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;

@@ -39,6 +39,8 @@ const bool enableValidationLayers = true;
 #endif
 
 #define Voxelization_Block
+//#define UseViewportSwizzle
+#define UseInstance
 
 VkResult CreateDebugUtilsMessengerEXT(VkInstance instance, const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo,
 	const VkAllocationCallbacks* pAllocator, VkDebugUtilsMessengerEXT* pDebygMessenger) {
@@ -92,7 +94,7 @@ void scroll_callback(GLFWwindow* window, double xoffset, double yoffset)
 	camera.ProcessMouseScroll(static_cast<float>(yoffset));
 }
 
-class Tessellation {
+class Voxelization {
 
 public:
 	void run() {
@@ -127,7 +129,7 @@ private:
 	std::unique_ptr<myScene> my_scene;
 
 	std::unique_ptr<myImage> voxelMap;
-	const uint32_t voxelNum = 64;
+	const uint32_t voxelNum = 32;
 	std::unique_ptr<myImage> depthMap;
 
 	std::unique_ptr<myBuffer> my_buffer;
@@ -172,7 +174,7 @@ private:
 
 	static void framebufferResizeCallback(GLFWwindow* window, int width, int height) {
 
-		auto app = reinterpret_cast<Tessellation*>(glfwGetWindowUserPointer(window));
+		auto app = reinterpret_cast<Voxelization*>(glfwGetWindowUserPointer(window));
 		app->framebufferResized = true;
 
 	}
@@ -364,7 +366,7 @@ private:
 
 		glm::vec3 voxelStartPos = glm::vec3(my_scene->bvhArray[0].AABB.leftX, my_scene->bvhArray[0].AABB.leftY, my_scene->bvhArray[0].AABB.leftZ);
 		glm::vec3 cubeVertexOffset[8] = { glm::vec3(0.0f), glm::vec3(1.0f, 0.0f, 0.0f), glm::vec3(1.0f, 1.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f),
-										  glm::vec3(0.0f, 0.0f, 1.0f), glm::vec3(1.0f, 0.0f, 1.0f), glm::vec3(1.0f, 1.0f, 1.0f), glm::vec3(0.0f, 1.0f, 1.0f) };
+								  glm::vec3(0.0f, 0.0f, 1.0f), glm::vec3(1.0f, 0.0f, 1.0f), glm::vec3(1.0f, 1.0f, 1.0f), glm::vec3(0.0f, 1.0f, 1.0f) };
 		glm::uint32_t cubeIndices[36] = {
 			1, 0, 3, 1, 3, 2,
 			4, 5, 6, 4, 6, 7,
@@ -374,13 +376,28 @@ private:
 			0, 1, 5, 0, 5, 4
 		};
 
-
 		float distanceX = my_scene->bvhArray[0].AABB.rightX - my_scene->bvhArray[0].AABB.leftX;
 		float distanceY = my_scene->bvhArray[0].AABB.rightY - my_scene->bvhArray[0].AABB.leftY;
 		float distanceZ = my_scene->bvhArray[0].AABB.rightZ - my_scene->bvhArray[0].AABB.leftZ;
 		glm::vec3 distanceXYZ = glm::vec3(distanceX, distanceY, distanceZ);
 		float maxDistance = std::max(distanceX, std::max(distanceY, distanceZ));
 		float voxelSize = maxDistance / voxelNum;
+
+#ifdef UseInstance
+		
+		this->vertices_cubes.resize(8);
+		for (int i = 0; i < 8; i++) {
+			this->vertices_cubes[i] = cubeVertexOffset[i] * voxelSize + voxelStartPos;
+		}
+		this->indices_cubes = {
+			1, 0, 3, 1, 3, 2,
+			4, 5, 6, 4, 6, 7,
+			5, 1, 2, 5, 2, 6,
+			0, 4, 7, 0, 7, 3,
+			7, 6, 2, 7, 2, 3,
+			0, 1, 5, 0, 5, 4
+		};
+#else
 
 		for (int z = 0; z < voxelNum; z++) {
 			for (int y = 0; y < voxelNum; y++) {
@@ -424,7 +441,7 @@ private:
 		//	this->indices_cubes.push_back(cubeIndices[i]);
 		//}
 
-
+#endif
 #endif
 
 	}
@@ -819,8 +836,13 @@ private:
 
 	void createGraphicsPipeline() {
 
+#ifdef UseViewportSwizzle
+		auto voxelVertShaderCode = readFile("C:/Users/fangzanbo/Desktop/渲染/GPU/新功能/voxelizationStepByStep/voxelizationStepByStep/shaders/voxelVert_passthrough.spv");
+		auto voxelGeomShaderCode = readFile("C:/Users/fangzanbo/Desktop/渲染/GPU/新功能/voxelizationStepByStep/voxelizationStepByStep/shaders/voxelGeom_passthrough.spv");
+#else
 		auto voxelVertShaderCode = readFile("C:/Users/fangzanbo/Desktop/渲染/GPU/新功能/voxelizationStepByStep/voxelizationStepByStep/shaders/voxelVert.spv");
 		auto voxelGeomShaderCode = readFile("C:/Users/fangzanbo/Desktop/渲染/GPU/新功能/voxelizationStepByStep/voxelizationStepByStep/shaders/voxelGeom.spv");
+#endif
 		auto voxelFragShaderCode = readFile("C:/Users/fangzanbo/Desktop/渲染/GPU/新功能/voxelizationStepByStep/voxelizationStepByStep/shaders/voxelFrag.spv");
 
 		VkShaderModule voxelVertShaderModule = createShaderModule(voxelVertShaderCode);
@@ -939,7 +961,10 @@ private:
 		//同样通过宏来确定可动态修改的状态
 		std::vector<VkDynamicState> dynamicStates = {
 			VK_DYNAMIC_STATE_VIEWPORT,
-			VK_DYNAMIC_STATE_SCISSOR
+			VK_DYNAMIC_STATE_SCISSOR,
+#ifdef UseViewportSwizzle
+			VK_DYNAMIC_STATE_VIEWPORT_SWIZZLE_NV
+#endif
 		};
 		VkPipelineDynamicStateCreateInfo dynamicState{};
 		dynamicState.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
@@ -1011,7 +1036,7 @@ private:
 		VkPipelineShaderStageCreateInfo final_shaderStages[] = { vertShaderStageInfo, fragShaderStageInfo };
 
 		inputAssembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
-		inputAssembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP;
+		inputAssembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
 		inputAssembly.primitiveRestartEnable = VK_FALSE;
 
 		colorBlendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
@@ -1335,6 +1360,31 @@ private:
 		viewport.maxDepth = 1.0f;
 		vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
 
+#ifdef UseViewportSwizzle
+		std::array<VkViewportSwizzleNV, 3> viewportSwizzles;
+		viewportSwizzles[0] = {		//前面
+			VK_VIEWPORT_COORDINATE_SWIZZLE_POSITIVE_X_NV,
+			VK_VIEWPORT_COORDINATE_SWIZZLE_POSITIVE_Y_NV,
+			VK_VIEWPORT_COORDINATE_SWIZZLE_POSITIVE_Z_NV,
+			VK_VIEWPORT_COORDINATE_SWIZZLE_POSITIVE_W_NV 
+		};
+		viewportSwizzles[1] = {		//左面
+			VK_VIEWPORT_COORDINATE_SWIZZLE_NEGATIVE_Z_NV,
+			VK_VIEWPORT_COORDINATE_SWIZZLE_POSITIVE_Y_NV,
+			VK_VIEWPORT_COORDINATE_SWIZZLE_POSITIVE_X_NV,
+			VK_VIEWPORT_COORDINATE_SWIZZLE_POSITIVE_W_NV
+		};
+		viewportSwizzles[2] = {		//下面
+			VK_VIEWPORT_COORDINATE_SWIZZLE_POSITIVE_X_NV,
+			VK_VIEWPORT_COORDINATE_SWIZZLE_POSITIVE_Z_NV,
+			VK_VIEWPORT_COORDINATE_SWIZZLE_POSITIVE_Y_NV,
+			VK_VIEWPORT_COORDINATE_SWIZZLE_POSITIVE_W_NV
+		};
+
+		// 使用动态视口 swizzle
+		vkCmdSetViewportSwizzleNV(commandBuffer, 0, 3, viewportSwizzles.data());
+#endif
+
 		VkRect2D scissor{};
 		scissor.offset = { 0, 0 };
 		scissor.extent = my_swapChain->swapChainExtent;
@@ -1403,6 +1453,17 @@ private:
 		//	1, &voxel_barrier
 		//);
 
+#ifdef UseViewportSwizzle
+		VkViewportSwizzleNV viewportSwizzle = {		//前面
+			VK_VIEWPORT_COORDINATE_SWIZZLE_POSITIVE_X_NV,
+			VK_VIEWPORT_COORDINATE_SWIZZLE_POSITIVE_Y_NV,
+			VK_VIEWPORT_COORDINATE_SWIZZLE_POSITIVE_Z_NV,
+			VK_VIEWPORT_COORDINATE_SWIZZLE_POSITIVE_W_NV
+		};
+		// 使用动态视口 swizzle
+		vkCmdSetViewportSwizzleNV(commandBuffer, 0, 1, &viewportSwizzle);
+#endif
+
 		vkCmdNextSubpass(commandBuffer, VK_SUBPASS_CONTENTS_INLINE);
 		vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, finalGraphicsPipeline);
 		vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, finalGraphicsPipelineLayout, 0, 1, &my_descriptor->descriptorObjects[0].descriptorSets[0], 0, nullptr);
@@ -1413,7 +1474,11 @@ private:
 		VkDeviceSize offsets_cubes[] = { 0 };
 		vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertex_cubesBuffers, offsets_cubes);
 		vkCmdBindIndexBuffer(commandBuffer, my_buffer->buffersStatic[3], 0, VK_INDEX_TYPE_UINT32);
+#ifdef UseInstance
+		vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(this->indices_cubes.size()), voxelNum * voxelNum * voxelNum, 0, 0, 0);
+#else
 		vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(this->indices_cubes.size()), 1, 0, 0, 0);
+#endif
 #else
 		vkCmdDraw(commandBuffer, 3, 1, 0, 0);
 #endif
@@ -1621,7 +1686,7 @@ private:
 
 int main() {
 
-	Tessellation app;
+	Voxelization app;
 
 	try {
 		app.run();

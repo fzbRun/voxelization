@@ -22,6 +22,7 @@ layout(set = 2, binding = 0, r32ui) uniform uimage2D depthMap;
 layout(set = 2, binding = 1, r32ui) uniform uimage3D voxelMap;
 
 layout(location = 0) in vec3 worldPos;
+layout(location = 1) in flat ivec3 voxelIndex;
 
 layout(location = 0) out vec4 FragColor;
 
@@ -64,13 +65,13 @@ ivec3 getTexelVoxelIndex(vec3 worldPos){
 void main(){
 
 	//通过cube得到的片元可能会出现在两个体素之间，这时我们应该选取远离相机的体素
-	vec3 tangent = dFdx(worldPos);
-	vec3 bitangent = dFdy(worldPos);
-	vec3 normal = normalize(cross(tangent, bitangent));
-	ivec3 voxelIndex = ivec3((worldPos.xyz - vbo.voxelStartPos.xyz - normal * vbo.voxelSize_Num.x * 0.2f) / vbo.voxelSize_Num.x);
+	//vec3 tangent = dFdx(worldPos);
+	//vec3 bitangent = dFdy(worldPos);
+	//vec3 normal = normalize(cross(tangent, bitangent));
+	//ivec3 voxelIndex = ivec3((worldPos.xyz - vbo.voxelStartPos.xyz) / vbo.voxelSize_Num.x);
 	//ivec3 texelVoxelIndex = getTexelVoxelIndex(worldPos);
 	
-	uint voxelValueU = imageLoad(voxelMap, voxelIndex).r;
+	uint voxelValueU = imageLoad(voxelMap, ivec3(voxelIndex)).r;
 	vec4 voxelValue = unpackUnorm4x8(voxelValueU);
 	if(voxelValue.w == 0){
 		discard;

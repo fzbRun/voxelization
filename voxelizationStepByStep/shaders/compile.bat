@@ -1,5 +1,7 @@
 C:/D/Vulkan/Bin/glslc.exe voxelVert.vert -o voxelVert.spv
 C:/D/Vulkan/Bin/glslc.exe voxelGeom.geom -o voxelGeom.spv
+C:/D/Vulkan/Bin/glslc.exe voxelVert_passthrough.vert -o voxelVert_passthrough.spv
+C:/D/Vulkan/Bin/glslc.exe voxelGeom_passthrough.geom -o voxelGeom_passthrough.spv
 C:/D/Vulkan/Bin/glslc.exe voxelFrag.frag -o voxelFrag.spv
 C:/D/Vulkan/Bin/glslc.exe finalVert.vert -o finalVert.spv
 C:/D/Vulkan/Bin/glslc.exe finalFrag.frag -o finalFrag.spv
